@@ -48,7 +48,15 @@ from .act.configuration_act import ACTConfig
 from .diffusion.configuration_diffusion import DiffusionConfig
 from .eo1.configuration_eo1 import EO1Config
 from .gaussian_actor.configuration_gaussian_actor import GaussianActorConfig
-from .groot.configuration_groot import GrootConfig
+
+# groot is incompatible with current huggingface_hub strict-dataclass API; make it optional
+try:
+    from .groot.configuration_groot import GrootConfig
+except Exception as _groot_import_err:
+    import logging as _logging
+    _logging.warning(f"Skipping groot policy import (not used in this project): {_groot_import_err}")
+    GrootConfig = None  # type: ignore[assignment]
+
 from .molmoact2.configuration_molmoact2 import MolmoAct2Config
 from .multi_task_dit.configuration_multi_task_dit import MultiTaskDiTConfig
 from .pi0.configuration_pi0 import PI0Config

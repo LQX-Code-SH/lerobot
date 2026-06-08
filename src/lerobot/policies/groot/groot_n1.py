@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -179,6 +180,7 @@ N_COLOR_CHANNELS = 3
 
 # config
 @strict
+@dataclass
 class GR00TN15Config(PretrainedConfig):
     model_type = "gr00t_n1_5"
 
