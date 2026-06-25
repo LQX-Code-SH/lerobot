@@ -215,6 +215,8 @@ def make_policy_config(policy_type: str, **kwargs) -> PreTrainedConfig:
     elif policy_type == "smolvla":
         return SmolVLAConfig(**kwargs)
     elif policy_type == "groot":
+        if GrootConfig is None:
+            raise ValueError("Policy type 'groot' is not available.")
         return GrootConfig(**kwargs)
     elif policy_type == "xvla":
         return XVLAConfig(**kwargs)
@@ -289,7 +291,7 @@ def make_pre_post_processors(
     """
     if pretrained_path:
         # TODO(Steven): Temporary patch, implement correctly the processors for Gr00t
-        if isinstance(policy_cfg, GrootConfig):
+        if GrootConfig is not None and isinstance(policy_cfg, GrootConfig):
             # GROOT handles normalization in groot_pack_inputs_v3 step
             # Need to override both stats AND normalize_min_max since saved config might be empty
             preprocessor_overrides = {}
@@ -405,7 +407,7 @@ def make_pre_post_processors(
             dataset_stats=kwargs.get("dataset_stats"),
         )
 
-    elif isinstance(policy_cfg, GrootConfig):
+    elif GrootConfig is not None and isinstance(policy_cfg, GrootConfig):
         from .groot.processor_groot import make_groot_pre_post_processors
 
         processors = make_groot_pre_post_processors(
