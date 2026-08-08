@@ -117,6 +117,9 @@ class ACTConfig(PreTrainedConfig):
     # Inference.
     # Note: the value used in ACT when temporal ensembling is enabled is 0.01.
     temporal_ensemble_coeff: float | None = None
+    # Legacy: 兼容旧 checkpoint 的 smoothing 字段（已被 temporal_ensemble_coeff 取代）。
+    # 旧模型 config.json 仍携带 "smoothing": null，保留此字段使 draccus 严格解析不报错。当前未使用。
+    smoothing: float | None = None
 
     # Training and loss computation.
     dropout: float = 0.1

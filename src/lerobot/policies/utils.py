@@ -124,12 +124,19 @@ def prepare_observation_for_inference(
         to (C, H, W) and normalized to a [0, 1] range.
     """
     for name in observation:
-        observation[name] = torch.from_numpy(observation[name])
+        value = torch.from_numpy(observation[name])
         if "image" in name:
-            observation[name] = observation[name].type(torch.float32) / 255
-            observation[name] = observation[name].permute(2, 0, 1).contiguous()
-        observation[name] = observation[name].unsqueeze(0)
-        observation[name] = observation[name].to(device)
+            # Transfer raw uint8 [H, W, C] to the device and do the float cast /
+            # normalize / permute on the GPU. Doing these on the CPU every tick
+            # (the previous .type(float32)/255 + .permute().contiguous()) was the
+            # dominant per-step cost (~48 ms on Jetson Orin). Output is identical:
+            # [1, C, H, W] float32 in [0, 1] on `device`.
+            value = value.to(device)
+            value = value.permute(2, 0, 1).contiguous().float() / 255.0
+            value = value.unsqueeze(0)
+        else:
+            value = value.unsqueeze(0).to(device)
+        observation[name] = value
 
     observation["task"] = task if task else ""
     observation["robot_type"] = robot_type if robot_type else ""

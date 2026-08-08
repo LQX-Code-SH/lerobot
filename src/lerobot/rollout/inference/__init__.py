@@ -18,8 +18,10 @@ Concrete backends (``sync``, ``rtc``, ...) expose the same small interface so
 rollout strategies never branch on which backend is in use.
 """
 
+from .act_async import ACTAsyncChunkConfig, ACTAsyncChunkEngine
 from .base import InferenceEngine
 from .factory import (
+    ACTAsyncInferenceConfig,
     InferenceEngineConfig,
     RTCInferenceConfig,
     SyncInferenceConfig,
@@ -29,6 +31,9 @@ from .rtc import RTCInferenceEngine
 from .sync import SyncInferenceEngine
 
 __all__ = [
+    "ACTAsyncChunkConfig",
+    "ACTAsyncChunkEngine",
+    "ACTAsyncInferenceConfig",
     "InferenceEngine",
     "InferenceEngineConfig",
     "RTCInferenceConfig",

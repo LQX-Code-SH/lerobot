@@ -139,20 +139,36 @@ class RolloutStrategy(abc.ABC):
 
     @staticmethod
     def _return_to_initial_position(hw: HardwareContext, duration_s: float = 3.0, fps: int = 50) -> None:
-        """Smoothly interpolate the robot back to its initial position."""
+        """Smoothly interpolate the robot back to its initial position.
+
+        若机器人支持 ``send_action_chunk``（如 Walker act_async 桥接），整段插值作为
+        一个 chunk 一次推送，由桥接 300Hz densify 平滑执行并 hold 末帧——与 300Hz 轨迹
+        发布线程保持单一指令源，避免关机时单动作与 hold 线程双源拉锯抖动。否则回退到
+        原逐拍单动作插值（通用兼容）。
+        """
         robot = hw.robot_wrapper
         target = hw.initial_position
         try:
             current_obs = robot.get_observation()
             current_pos = {k: v for k, v in current_obs.items() if k in target}
             steps = max(int(duration_s * fps), 1)
-            for step in range(1, steps + 1):
-                t = step / steps
-                interp = {}
-                for k in current_pos:
-                    interp[k] = current_pos[k] * (1 - t) + target[k] * t
-                robot.send_action(interp)
-                precise_sleep(1 / fps)
+            ts = [step / steps for step in range(1, steps + 1)]
+            if hasattr(robot, "send_action_chunk"):
+                # chunk 路径：整段插值一次推送，桥接 300Hz densify 平滑执行（单源）
+                chunk = {
+                    k: [current_pos[k] * (1 - t) + target[k] * t for t in ts]
+                    for k in current_pos
+                }
+                robot.send_action_chunk(
+                    chunk, fps=float(fps), chunk_id=-1,
+                    obs_time_sec=time.time(), record=False,
+                )
+                precise_sleep(duration_s)
+            else:
+                for t in ts:
+                    interp = {k: current_pos[k] * (1 - t) + target[k] * t for k in current_pos}
+                    robot.send_action(interp)
+                    precise_sleep(1 / fps)
         except Exception as e:
             logger.warning("Could not return to initial position: %s", e)
 
@@ -271,6 +287,7 @@ def send_next_action(
     obs_raw: dict,
     ctx: RolloutContext,
     interpolator: ActionInterpolator,
+    timing: dict | None = None,
 ) -> dict | None:
     """Dispatch the next action to the robot.
 
@@ -288,12 +305,20 @@ def send_next_action(
 
     if interpolator.needs_new_action():
         obs_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
+        _t = time.perf_counter()
         action_tensor = engine.get_action(obs_frame)
+        if timing is not None:
+            timing["infer"] = time.perf_counter() - _t
         if action_tensor is not None:
             interpolator.add(action_tensor.cpu())
+    elif timing is not None:
+        timing["infer"] = 0.0
 
+    _t = time.perf_counter()
     interp = interpolator.get()
     if interp is None:
+        if timing is not None:
+            timing["dispatch"] = time.perf_counter() - _t
         return None
 
     if len(interp) != len(ordered_keys):
@@ -301,4 +326,6 @@ def send_next_action(
     action_dict = {k: interp[i].item() for i, k in enumerate(ordered_keys)}
     processed = ctx.processors.robot_action_processor((action_dict, obs_raw))
     ctx.hardware.robot_wrapper.send_action(processed)
+    if timing is not None:
+        timing["dispatch"] = time.perf_counter() - _t
     return action_dict

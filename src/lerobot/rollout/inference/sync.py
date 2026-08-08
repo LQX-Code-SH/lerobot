@@ -78,6 +78,11 @@ class SyncInferenceEngine(InferenceEngine):
             self._device,
             len(ordered_action_keys),
         )
+        if self._device.type == "cuda":
+            # Autotune conv algorithms once (cached) instead of relying on the
+            # default heuristic every forward - helps the ResNet backbone warm
+            # forward time. Safe for inference with fixed input shapes.
+            torch.backends.cudnn.benchmark = True
 
     def start(self) -> None:
         """No background resources to start."""

@@ -14,7 +14,7 @@
 
 """Inference engine configs and factory.
 
-Selection is explicit via ``--inference.type=sync|rtc``.  Adding a new
+Selection is explicit via ``--inference.type=sync|rtc|act_async``.  Adding a new
 backend requires registering its config subclass and dispatching it in
 :func:`create_inference_engine`.
 """
@@ -33,6 +33,7 @@ from lerobot.policies.rtc.configuration_rtc import RTCConfig
 from lerobot.processor import PolicyProcessorPipeline
 
 from ..robot_wrapper import ThreadSafeRobot
+from .act_async import ACTAsyncChunkConfig, ACTAsyncChunkEngine
 from .base import InferenceEngine
 from .rtc import RTCInferenceEngine
 from .sync import SyncInferenceEngine
@@ -72,6 +73,18 @@ class RTCInferenceConfig(InferenceEngineConfig):
     # (e.g. ``--inference.rtc.execution_horizon=...``).
     rtc: RTCConfig = field(default_factory=RTCConfig)
     queue_threshold: int = 30
+
+
+@InferenceEngineConfig.register_subclass("act_async")
+@dataclass
+class ACTAsyncInferenceConfig(InferenceEngineConfig):
+    """ACT async chunk engine: 后台线程产整块 chunk 并推给桥接（chunk-to-bridge）。
+
+    get_action 恒返回 None，旁路单动作路径；动作由后台线程经
+    ``robot_wrapper.send_action_chunk`` 整块推给桥接，桥接做融合/插值/滤波。
+    """
+
+    act_async: ACTAsyncChunkConfig = field(default_factory=ACTAsyncChunkConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +136,20 @@ def create_inference_engine(
             use_torch_compile=use_torch_compile,
             compile_warmup_inferences=compile_warmup_inferences,
             rtc_queue_threshold=config.queue_threshold,
+            shutdown_event=shutdown_event,
+        )
+    if isinstance(config, ACTAsyncInferenceConfig):
+        return ACTAsyncChunkEngine(
+            policy=policy,
+            preprocessor=preprocessor,
+            postprocessor=postprocessor,
+            robot_wrapper=robot_wrapper,
+            cfg=config.act_async,
+            hw_features=hw_features,
+            task=task,
+            fps=fps,
+            device=device,
+            ordered_action_keys=ordered_action_keys,
             shutdown_event=shutdown_event,
         )
     raise ValueError(f"Unknown inference engine type: {type(config).__name__}")

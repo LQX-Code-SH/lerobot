@@ -47,6 +47,36 @@ class ThreadSafeRobot:
         with self._lock:
             return self._robot.send_action(action)
 
+    def send_action_chunk(
+        self,
+        action_chunk: dict[str, list[float]],
+        *,
+        inference_time_sec: float = 0.0,
+        obs_time_sec: float = 0.0,
+        chunk_id: int = 0,
+        fps: float | None = None,
+        record: bool = True,
+    ) -> None:
+        """Push a whole action chunk to the robot (chunk-to-bridge mode).
+
+        Used by async engines that produce chunks in a background thread and
+        push them directly to the bridge for fusion/interpolation, bypassing
+        the per-tick single-action path.  Serialised under the same lock as
+        ``send_action`` so concurrent I/O stays safe.
+
+        ``record=False`` skips chunks.csv recording (for non-policy moves like
+        shutdown return-to-initial), keeping policy diagnostics clean.
+        """
+        with self._lock:
+            return self._robot.send_action_chunk(
+                action_chunk,
+                inference_time_sec=inference_time_sec,
+                obs_time_sec=obs_time_sec,
+                chunk_id=chunk_id,
+                fps=fps,
+                record=record,
+            )
+
     # -- Read-only proxies (no lock needed) -----------------------------------
 
     @property

@@ -38,6 +38,8 @@ from .context import (
     build_rollout_context,
 )
 from .inference import (
+    ACTAsyncChunkEngine,
+    ACTAsyncInferenceConfig,
     InferenceEngine,
     InferenceEngineConfig,
     RTCInferenceConfig,
@@ -66,6 +68,8 @@ __all__ = [
     "HardwareContext",
     "HighlightStrategy",
     "HighlightStrategyConfig",
+    "ACTAsyncChunkEngine",
+    "ACTAsyncInferenceConfig",
     "InferenceEngine",
     "InferenceEngineConfig",
     "PolicyContext",
