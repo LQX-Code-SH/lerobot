@@ -77,6 +77,16 @@ class ThreadSafeRobot:
                 record=record,
             )
 
+    def hold_trajectory(self) -> None:
+        """转发 hold_trajectory(与 send_action_chunk 共用 _lock，串行化 socket 访问)。
+
+        ZMQ socket 非线程安全；与引擎后台线程的 send_action_chunk 共用 _cmd_socket，
+        故须经同一把 _lock 串行化。副作用：在飞 chunk 的 send 与 hold 的 send 互斥 ->
+        桥接必收 chunk-then-hold -> 在飞 chunk 仅执行 ~ms 即被 hold 截断。
+        """
+        with self._lock:
+            return self._robot.hold_trajectory()
+
     # -- Read-only proxies (no lock needed) -----------------------------------
 
     @property

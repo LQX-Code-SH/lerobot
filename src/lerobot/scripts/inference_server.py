@@ -618,6 +618,14 @@ class InferenceServer(RolloutStrategy):
         eng = self._engine
         if eng is not None and hasattr(eng, "pause"):
             eng.pause()
+        # 立即 hold 桥接当前位姿：截断轨迹避 drain ~6.7s（stop 后机器人仍走的根因）。
+        # 经 ThreadSafeRobot 锁串行化，与引擎在飞 chunk 的 send 互斥。
+        ctx = self._ctx_holder
+        if ctx is not None:
+            try:
+                ctx.hardware.robot_wrapper.hold_trajectory()
+            except Exception as e:
+                logger.warning("hold_trajectory failed: %s", e)
         self._set_state(STATE_READY)
         return self._ok("stop")
 

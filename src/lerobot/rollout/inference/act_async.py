@@ -259,6 +259,9 @@ class ACTAsyncChunkEngine(InferenceEngine):
                     self._chunk_id += 1
 
                     # 5. 整块推给桥接（chunk-to-bridge）
+                    # pause 落在 predict 窗口：丢弃在飞 chunk，避免 stop 后仍 push 一块。
+                    if not self._policy_active.is_set():
+                        continue
                     self._robot.send_action_chunk(
                         chunk_dict,
                         inference_time_sec=latency,
