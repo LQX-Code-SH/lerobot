@@ -72,6 +72,7 @@ from lerobot.robots import (  # noqa: F401
 )
 from lerobot.rollout import RolloutConfig, build_rollout_context
 from lerobot.rollout.context import RolloutContext
+from lerobot.rollout.inference.base import InferenceEngine
 from lerobot.rollout.strategies.core import RolloutStrategy, send_next_action
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
@@ -117,6 +118,20 @@ _CMD_POLL_TIMEOUT_MS = 200
 _IDLE_OBS_INTERVAL_S = 0.2
 # home 前 etc. 让在飞 chunk 落桥接的缓冲。
 _CHUNK_SETTLE_S = 0.15
+
+
+# ── 引擎能力判定 ──────────────────────────────────────────────────────────────
+
+
+def _engine_is_async(engine: InferenceEngine | None) -> bool:
+    """引擎是否自己持有后台线程并整块推桥接（act_async / RTC）。
+
+    不能用 ``hasattr(engine, "resume")``：``InferenceEngine`` 给 ``pause`` /
+    ``resume`` 提供了 no-op 默认实现，子类只要继承就恒为 True，sync 引擎会被
+    误判成异步——服务端于是跳过 ``send_next_action``，``start`` 后一条动作都不发。
+    判据必须是"子类有没有真的覆盖它"。
+    """
+    return engine is not None and type(engine).resume is not InferenceEngine.resume
 
 
 # ── 参数处理 ──────────────────────────────────────────────────────────────────
@@ -394,7 +409,7 @@ class InferenceServer(RolloutStrategy):
         period_sum = 0.0
         n_period = 0
         last_report = time.perf_counter()
-        is_act_async = self._engine is not None and hasattr(self._engine, "resume")
+        is_act_async = _engine_is_async(self._engine)
 
         while not self._shutdown_event.is_set():
             # 1. 处理 pending load（主线程执行重建，独占 ctx 交换）
@@ -403,7 +418,7 @@ class InferenceServer(RolloutStrategy):
                     params = self._pending_load
                     self._pending_load = None
                 self._do_load(params)
-                is_act_async = self._engine is not None and hasattr(self._engine, "resume")
+                is_act_async = _engine_is_async(self._engine)
                 continue
 
             cur_ctx = self._ctx_holder
@@ -424,8 +439,9 @@ class InferenceServer(RolloutStrategy):
                 # 破坏「start 前 engine 保持 paused」语义。服务器面向 ACT（engine.ready 恒 True、
                 # 无需 compile warmup），故跳过；--use_torch_compile 不被支持。
                 # act_async：动作由引擎后台线程整块推桥接，send_next_action 是 no-op，跳过省开销。
-                # 非 act_async（sync）才走单动作路径（但 sync 无 pause/resume，start/stop 不适用）。
-                if not is_act_async:
+                # sync 引擎没有后台线程，由本循环逐帧推理下发；但它没有 pause/resume 可停，
+                # 所以必须自己按状态机门控——否则拉起服务（READY）就会开始动机器人。
+                if not is_act_async and self._state == STATE_RUNNING:
                     send_next_action(
                         self._cached_obs_processed, obs, cur_ctx, self._interpolator
                     )
@@ -604,8 +620,8 @@ class InferenceServer(RolloutStrategy):
         eng = self._engine
         if eng is None:
             return self._err("start", "no engine loaded")
-        if not hasattr(eng, "resume"):
-            return self._err("start", "engine has no pause/resume (act_async required for start/stop)")
+        # sync 引擎没有 pause/resume（ABC 的默认实现是 no-op），靠上面的状态门控生效，
+        # 所以这里不再要求 act_async——否则 sync 机型（Dex 桥接只吃单步指令）无法 start。
         if self._state == STATE_RUNNING:
             return self._ok("start", note="already running")
         if hasattr(eng, "reset"):
